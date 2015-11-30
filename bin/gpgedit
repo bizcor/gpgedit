@@ -1,0 +1,237 @@
+#!/usr/bin/perl
+
+# gpgedit -- edit gpg encrypted text files
+# Copyright (C) 2015  David Alban
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+use strict;
+use warnings;
+
+use Digest::MD5 qw(md5_hex);
+use File::Basename;
+use File::Path qw(remove_tree);
+use List::Util qw(first);
+
+umask 077;
+
+     # include directory containing gpg executable
+$ENV{ PATH } = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin";
+
+my $pgm = basename $0;
+
+my $usage = << "EndOfUsage";
+usage: $pgm File
+EndOfUsage
+
+my $file = shift;
+(not defined $file or not $file) and die $usage;
+my $gpg_recipient = validate_file($file);
+
+     # create the tmp dir where we'll edit the clear text version of
+     # the encrypted file 
+my ($tmpdir, $tmpfile) = tmpfile($file);
+my $we_created_the_tmp_directory = 1;
+
+     # decrypt file to tmp file
+decrypt_file($file, $tmpfile);
+
+     # edit file.  if the content changed, ask the user if they want
+     # to commit (re-encrypt) the changes.  
+my $file_content_changed = edit_file($tmpfile);
+if ($file_content_changed) {
+  prompt_for_file_commit($tmpfile, $file, $gpg_recipient)
+} # if
+else {
+  print "$file: unchanged\n";
+} # if
+
+END {
+  cleanup();
+}
+
+#-----------------------------------------------------------------------
+     # recursively remove the tmp directory if it exists
+sub cleanup {
+  if (defined $tmpdir and -e $tmpdir and $we_created_the_tmp_directory) {
+    remove_tree($tmpdir)
+      or warn "$pgm: $tmpdir: could not remove directory: $!\n";
+  }
+  return 1;
+} # cleanup
+
+#-----------------------------------------------------------------------
+     # determine the gpg "recipient" of the encrypted file.  we'll
+     # need this to re-encrypt any changes.  
+sub determine_recipient {
+  my $func = (caller 0)[ 3 ];
+
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+
+  my $cmd = qq{gpg --list-only --verbose $file 2>\&1};
+  my $results = [ qx{$cmd} ];
+  my $status = $? >> 8;
+  if ($status != 0) {
+    die "$pgm: command => '$cmd'; command returned non-zero status ($status);",
+        " perhaps file '$file' is not pgp encrypted data\n";
+  } # if
+
+  my $key_lines
+    = [ first { m{ public \s+ key \s+ is \s+ ([A-F0-9]+) }ixms } @$results ];
+  @$key_lines != 1
+    and die "$func(): found ", scalar @$key_lines,
+            " key lines, expected one\n";
+  my $key_line = $key_lines->[ 0 ];
+  chomp($key_line);
+  $key_line !~ m{ public \s+ key \s+ is \s+ ([A-F0-9]+) }ixms
+    and die "can't determine key id from line '$key_line'\n";
+  my $key_id = $1;
+
+  $cmd = qq{gpg --list-keys $key_id};
+  $results = [ qx{$cmd} ];
+  chomp @$results;
+
+  my $email_line = first { $_ =~ m{ < (\S+ [@] \S+) > }xms } @$results;
+  (my $recipient = $email_line) =~ s{ .* < (\S+ [@] \S+) > .* }{$1}xms;
+
+  return $recipient;
+} # determine_recipient
+
+#-----------------------------------------------------------------------
+     # in addition to exists, regular, and readable, we must be able
+     # to determine the gpg recipient from the file.  
+sub validate_file {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+
+  not -e $file and die "$pgm: file => '$file': can't stat\n";
+  not -f $file and die "$pgm: file => '$file': not regular file\n";
+  not -r $file and die "$pgm: file => '$file': cannot read file\n";
+
+  my $gpg_recipient = determine_recipient($file);
+
+  return $gpg_recipient;
+} # validate_file
+
+#-----------------------------------------------------------------------
+     # return the md5 hex digest of the given file
+sub md5_checksum {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+
+  open my $fh, '<', $file;
+  my $md5_checksum = Digest::MD5->new->addfile($fh)->hexdigest;
+  close $fh;
+
+  return $md5_checksum;
+} # md5_checksum
+
+#-----------------------------------------------------------------------
+     # if the user wants to commit the changes, re-encrypt the clear
+     # text tmp file over the original encrypted file, thus updating it.  
+sub prompt_for_file_commit {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $cleartext_file = shift)
+    and die "$func(): \$cleartext_file undefined\n";
+  not defined(my $encrypted_file = shift)
+    and die "$func(): \$encrypted_file undefined\n";
+  not defined(my $gpg_recipient = shift)
+    and die "$func(): \$gpg_recipient undefined\n";
+
+  print "Commit ${encrypted_file}? [no:]  ";
+  (my $response = <STDIN>) =~ s/\s//g;
+
+  if ($response =~ /^y(es)?$/i) {
+    my $cmd = qq{gpg --encrypt --recipient $gpg_recipient};
+    $cmd = qq{$cmd < $cleartext_file > $encrypted_file};
+    system $cmd;
+    my $status = $? >> 8;
+    $status != 0 and die "$pgm: command => '$cmd'; command returned",
+                         " non-zero status ($status)\n";
+    print "$encrypted_file committed!\n";
+  } # if
+  else {
+    print "($encrypted_file unchanged)\n";
+  } # if
+
+  return;
+} # prompt_for_file_commit
+
+#-----------------------------------------------------------------------
+     # decrypt the encrypted file we want to edit
+sub decrypt_file {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+  not defined(my $decrypt_to = shift)
+    and die "$func(): \$decrypt_to undefined\n";
+
+  my $cmd = "gpg --decrypt $file > $tmpfile";
+  system $cmd;
+  my $status = $? >> 8;
+  $status != 0 and die "$pgm: command => '$cmd'; command returned",
+                       " non-zero status ($status)\n";
+  return;
+} # decrypt_file
+
+#-----------------------------------------------------------------------
+     # create a tmp directory and determine the name of the tmp file
+     # we'll use in it 
+sub tmpfile {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+
+  my $file_basename = basename $file;
+
+       # put tmp directory under $HOME so that if we're editing a file
+       # in Dropbox or other similar service, the clear text tmp file
+       # is not visible except on the local machine.  still have to
+       # worry about root users, though...  
+  my $tmpdir = "$ENV{ HOME }/.gpge.$file_basename.d";
+
+       # bail if tmp directory exists
+  if (not mkdir $tmpdir) {
+    warn "$pgm: $file appears to be in use.",
+         "  A temporary directory exists for it:\n";
+    system "find $tmpdir -ls";
+    die "If this should not be the case, remove the directory and try again.\n";
+  } # if
+
+  my $tmpfile = "$tmpdir/$file_basename";
+
+       # tmp directory should allow no group or other access; umask above should
+       # take care of this, but think of this as extra insurance.
+  chmod 0700, $tmpdir or die "$pgm: $tmpdir: can't chmod to 0700: $!\n";
+
+  return ($tmpdir, $tmpfile);
+} # tmpfile
+
+#-----------------------------------------------------------------------
+     # determine the editor and edit the given clear text file.  use
+     # checksums to determine whether any content changes were made. 
+     # return a boolean indicating whether the content changed.  
+sub edit_file {
+  my $func = (caller 0)[ 3 ];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+
+       # calculate checksum of file before editing
+  my $checksum_before_editing = md5_checksum($tmpfile);
+
+       # edit; default is to edit with vim
+  my $editor = 'vim';
+  if (defined $ENV{ EDITOR }) {
+    $editor = $ENV{ EDITOR };
+  }
+  elsif (defined $ENV{ VISUAL }) {
+    $editor = $ENV{ VISUAL };
+  }
+
+  system($editor, $tmpfile);
+
+      # calculate checksum after editing
+  my $checksum_after_editing = md5_checksum($tmpfile);
+
+  return $checksum_before_editing ne $checksum_after_editing;
+} # edit_file
