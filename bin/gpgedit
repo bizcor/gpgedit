@@ -101,8 +101,12 @@ sub determine_recipient {
 } # determine_recipient
 
 #-----------------------------------------------------------------------
-     # in addition to exists, regular, and readable, we must be able
-     # to determine the gpg recipient from the file.  
+     # in addition to being an existing readble, regular file, we must
+     # be able to determine a gpg recipient to use if we re-encrypt the
+     # file.  if GPGEDIT_RECIPIENT is set in the environment, use that.
+     # otherwise, determine the recipient from the file.  getting the value
+     # from the environment is useful if you want to change keys used to
+     # encrypt the file.
 sub validate_file {
   my $func = (caller 0)[ 3 ];
   not defined(my $file = shift) and die "$func(): \$file undefined\n";
@@ -111,7 +115,8 @@ sub validate_file {
   not -f $file and die "$pgm: file => '$file': not regular file\n";
   not -r $file and die "$pgm: file => '$file': cannot read file\n";
 
-  my $gpg_recipient = determine_recipient($file);
+  my $gpg_recipient = $ENV{GPGEDIT_RECIPIENT};
+  not defined $gpg_recipient and $gpg_recipient = determine_recipient($file);
 
   return $gpg_recipient;
 } # validate_file
