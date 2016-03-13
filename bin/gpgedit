@@ -71,6 +71,9 @@ sub determine_recipient {
 
   not defined(my $file = shift) and die "$func(): \$file undefined\n";
 
+       # if GPGEDIT_RECIPIENT is set in the environment, use it
+  defined $ENV{GPGEDIT_RECIPIENT} and return $ENV{GPGEDIT_RECIPIENT};
+
   my $cmd = qq{gpg --list-only --verbose $file 2>\&1};
   my $results = [ qx{$cmd} ];
   my $status = $? >> 8;
@@ -101,12 +104,7 @@ sub determine_recipient {
 } # determine_recipient
 
 #-----------------------------------------------------------------------
-     # in addition to being an existing readble, regular file, we must
-     # be able to determine a gpg recipient to use if we re-encrypt the
-     # file.  if GPGEDIT_RECIPIENT is set in the environment, use that.
-     # otherwise, determine the recipient from the file.  getting the value
-     # from the environment is useful if you want to change keys used to
-     # encrypt the file.
+     # file must be an existing, readable, regular file
 sub validate_file {
   my $func = (caller 0)[ 3 ];
   not defined(my $file = shift) and die "$func(): \$file undefined\n";
@@ -115,8 +113,7 @@ sub validate_file {
   not -f $file and die "$pgm: file => '$file': not regular file\n";
   not -r $file and die "$pgm: file => '$file': cannot read file\n";
 
-  my $gpg_recipient = $ENV{GPGEDIT_RECIPIENT};
-  not defined $gpg_recipient and $gpg_recipient = determine_recipient($file);
+  my $gpg_recipient = determine_recipient($file);
 
   return $gpg_recipient;
 } # validate_file
@@ -150,8 +147,8 @@ sub prompt_for_file_commit {
   (my $response = <STDIN>) =~ s/\s//g;
 
   if ($response =~ /^y(es)?$/i) {
-    my $cmd = qq{gpg --encrypt --recipient $gpg_recipient};
-    $cmd = qq{$cmd < $cleartext_file > $encrypted_file};
+    my $cmd = qq{gpg --encrypt --recipient '$gpg_recipient'};
+    $cmd = qq{$cmd < "$cleartext_file" > "$encrypted_file"};
     system $cmd;
     my $status = $? >> 8;
     $status != 0 and die "$pgm: command => '$cmd'; command returned",
@@ -173,7 +170,7 @@ sub decrypt_file {
   not defined(my $decrypt_to = shift)
     and die "$func(): \$decrypt_to undefined\n";
 
-  my $cmd = "gpg --decrypt $file > $tmpfile";
+  my $cmd = qq{gpg --decrypt "$file" > "$tmpfile"};
   system $cmd;
   my $status = $? >> 8;
   $status != 0 and die "$pgm: command => '$cmd'; command returned",
@@ -200,7 +197,7 @@ sub tmpfile {
   if (not mkdir $tmpdir) {
     warn "$pgm: $file appears to be in use.",
          "  A temporary directory exists for it:\n";
-    system "find $tmpdir -ls";
+    system qq{find "$tmpdir" -ls};
     die "If this should not be the case, remove the directory and try again.\n";
   } # if
 
