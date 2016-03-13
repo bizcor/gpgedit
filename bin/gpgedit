@@ -42,7 +42,8 @@ decrypt_file($file, $tmpfile);
      # edit file.  if the content changed, ask the user if they want
      # to commit (re-encrypt) the changes.  
 my $file_content_changed = edit_file($tmpfile);
-if ($file_content_changed) {
+defined $ENV{GPGEDIT_ALWAYS_PROMPT} and print "GPGEDIT_ALWAYS_PROMPT is set in the environment\n";
+if ($file_content_changed or defined $ENV{GPGEDIT_ALWAYS_PROMPT}) {
   prompt_for_file_commit($tmpfile, $file, $gpg_recipient)
 } # if
 else {
