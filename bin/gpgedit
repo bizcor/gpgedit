@@ -187,14 +187,21 @@ sub tmpfile {
 
   my $file_basename = basename $file;
 
+       # get filesystem device number and inode number of file
+  my $file_id = file_id($file);
+  my $fsdev = $file_id->{fsdev};
+  my $inode = $file_id->{inode};
+
        # put tmp directory under $HOME so that if we're editing a file
        # in Dropbox or other similar service, the clear text tmp file
        # is not visible except on the local machine.  still have to
        # worry about root users, though...  
-  my $tmpdir = "$ENV{ HOME }/.gpge.$file_basename.d";
+       # use of fsdev and inode numbers avoids collisions when
+       # simultaneously editing different files with the same basename.
+  my $tmpdir = "$ENV{ HOME }/.gpge.fsdev${fsdev}.inode${inode}";
 
        # bail if tmp directory exists
-  if (not mkdir $tmpdir) {
+  if (not mkdir $tmpdir, 0700) {
     warn "$pgm: $file appears to be in use.",
          "  A temporary directory exists for it:\n";
     system qq{find "$tmpdir" -ls};
@@ -202,10 +209,6 @@ sub tmpfile {
   } # if
 
   my $tmpfile = "$tmpdir/$file_basename";
-
-       # tmp directory should allow no group or other access; umask above should
-       # take care of this, but think of this as extra insurance.
-  chmod 0700, $tmpdir or die "$pgm: $tmpdir: can't chmod to 0700: $!\n";
 
   return ($tmpdir, $tmpfile);
 } # tmpfile
@@ -237,3 +240,14 @@ sub edit_file {
 
   return $checksum_before_editing ne $checksum_after_editing;
 } # edit_file
+
+#-----------------------------------------------------------------------
+sub file_id {
+  my $func = (caller 0)[3];
+  not defined(my $file = shift) and die "$func(): \$file undefined\n";
+  my $statbuf = [ stat $file ];
+  return {
+    fsdev => $statbuf->[0],
+    inode => $statbuf->[1],
+  };
+} # file_id
