@@ -97,8 +97,8 @@ sub determine_recipient {
   $results = [ qx{$cmd} ];
   chomp @$results;
 
-  my $email_line = first { $_ =~ m{ < (\S+ [@] \S+) > }xms } @$results;
-  (my $recipient = $email_line) =~ s{ .* < (\S+ [@] \S+) > .* }{$1}xms;
+  my $uid_line = first { $_ =~ m{ \A uid \s+ }xms } @$results;
+  (my $recipient = $uid_line) =~ s{ \A uid \s+ (.*) }{$1}xms;
 
   return $recipient;
 } # determine_recipient
