@@ -75,6 +75,7 @@ sub determine_recipient {
        # if GPGEDIT_RECIPIENT is set in the environment, use it
   defined $ENV{GPGEDIT_RECIPIENT} and return $ENV{GPGEDIT_RECIPIENT};
 
+       # gpg: public key is DEADBEEF
   my $cmd = qq{gpg --list-only --verbose $file 2>\&1};
   my $results = [ qx{$cmd} ];
   my $status = $? >> 8;
@@ -94,14 +95,7 @@ sub determine_recipient {
     and die "can't determine key id from line '$key_line'\n";
   my $key_id = $1;
 
-  $cmd = qq{gpg --list-keys $key_id};
-  $results = [ qx{$cmd} ];
-  chomp @$results;
-
-  my $uid_line = first { $_ =~ m{ \A uid \s+ }xms } @$results;
-  (my $recipient = $uid_line) =~ s{ \A uid \s+ (.*) }{$1}xms;
-
-  return $recipient;
+  return $key_id;
 } # determine_recipient
 
 #-----------------------------------------------------------------------
