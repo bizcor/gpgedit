@@ -24,12 +24,34 @@ $ENV{ PATH } = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin";
 my $pgm = basename $0;
 
 my $usage = << "EndOfUsage";
-usage: $pgm File
+usage: $pgm [ options ] File
+options:
+  --cloud-lock   If given, get a "public" lock on the file by mkdir'ing a directory whose
+                 path is File appended by ".lock.d".  This is useful when the file is in
+                 the cloud and will be accessed by multiple devices.  No sensitive information
+                 will be put in the lock directory.
 EndOfUsage
 
-my $file = shift;
+my $file;
+
+my $first_arg = shift;
+not defined $first_arg and warn $usage and exit 1;
+
+my $lock_directory;
+if ($first_arg eq '--cloud-lock') {
+  $file = shift;
+  $lock_directory = "${file}.lock.d";
+}
+else {
+  $file = $first_arg;
+}
+
 (not defined $file or not $file) and die $usage;
 my $gpg_recipient = validate_file($file);
+
+if (defined $lock_directory) {
+  mkdir $lock_directory or die "can't mkdir $lock_directory"
+}
 
      # create the tmp dir where we'll edit the clear text version of
      # the encrypted file 
@@ -60,6 +82,9 @@ sub cleanup {
   if (defined $tmpdir and -e $tmpdir and $we_created_the_tmp_directory) {
     remove_tree($tmpdir)
       or warn "$pgm: $tmpdir: could not remove directory: $!\n";
+  }
+  if (defined $lock_directory and -d $lock_directory) {
+    remove_tree($lock_directory)
   }
   return 1;
 } # cleanup
