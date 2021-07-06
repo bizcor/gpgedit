@@ -36,8 +36,8 @@ my $this_host = hostname;
      # secrets or senstive information.  compare with $tmpdir below.
      # the lock directory is to keep multiple users from editing the file,
      # not matter what device they're accessing it from.
-my $lock_directory = "${file}.${this_host}.lock.d";
-my $pidfile = "${lock_directory}/pid";
+my $lock_directory = "${file}.lock.d";
+my $info_file = "${lock_directory}/info";
 
 my $gpg_recipient = validate_file($file);
 
@@ -45,24 +45,24 @@ my $got_lock = 0;
 if (not mkdir $lock_directory) {
   warn "can't mkdir lock directory '$lock_directory': $!";
 
-  my $pid;
-  if (-e $pidfile) {
-    open(PIDFILE, '<', $pidfile) or die $!;
-    $pid = <PIDFILE>;
-    chomp $pid;
+  my $info;
+  if (-e $info_file) {
+    open(INFOFILE, '<', $info_file) or die $!;
+    $info = <INFOFILE>;
+    chomp $info;
   }
   my $results = qx{ls -ld $lock_directory};
   chomp $results;
   print $results;
-  print ", pid $pid" if defined $pid;
+  print ", $info" if defined $info;
   print "\n";
   exit 1;
 }
 else {
   $got_lock = 1;
-  open(PIDFILE, '>', $pidfile) or die $!;
-  print PIDFILE "${$}\n";
-  close PIDFILE;
+  open(INFOFILE, '>', $info_file) or die $!;
+  print INFOFILE "host => $this_host; pid => ${$}\n";
+  close INFOFILE;
 }
 
      # create the tmp dir where we'll edit the clear text version of
