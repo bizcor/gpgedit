@@ -15,6 +15,7 @@ use Digest::MD5 qw(md5_hex);
 use File::Basename;
 use File::Path qw(remove_tree);
 use List::Util qw(first);
+use Sys::Hostname;
 
 umask 077;
 
@@ -24,33 +25,44 @@ $ENV{ PATH } = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin";
 my $pgm = basename $0;
 
 my $usage = << "EndOfUsage";
-usage: $pgm [ options ] File
-options:
-  --cloud-lock   If given, get a "public" lock on the file by mkdir'ing a directory whose
-                 path is File appended by ".lock.d".  This is useful when the file is in
-                 the cloud and will be accessed by multiple devices.  No sensitive information
-                 will be put in the lock directory.
+usage: $pgm File
 EndOfUsage
 
-my $file;
+my $file = shift;
+not defined $file and die $usage;
 
-my $first_arg = shift;
-not defined $first_arg and warn $usage and exit 1;
+my $this_host = hostname;
+     # users from any device will see this, and it will not contain any
+     # secrets or senstive information.  compare with $tmpdir below.
+     # the lock directory is to keep multiple users from editing the file,
+     # not matter what device they're accessing it from.
+my $lock_directory = "${file}.${this_host}.lock.d";
+my $pidfile = "${lock_directory}/pid";
 
-my $lock_directory;
-if ($first_arg eq '--cloud-lock') {
-  $file = shift;
-  $lock_directory = "${file}.lock.d";
-}
-else {
-  $file = $first_arg;
-}
-
-(not defined $file or not $file) and die $usage;
 my $gpg_recipient = validate_file($file);
 
-if (defined $lock_directory) {
-  mkdir $lock_directory or die "can't mkdir $lock_directory"
+my $got_lock = 0;
+if (not mkdir $lock_directory) {
+  warn "can't mkdir lock directory '$lock_directory': $!";
+
+  my $pid;
+  if (-e $pidfile) {
+    open(PIDFILE, '<', $pidfile) or die $!;
+    $pid = <PIDFILE>;
+    chomp $pid;
+  }
+  my $results = qx{ls -ld $lock_directory};
+  chomp $results;
+  print $results;
+  print ", pid $pid" if defined $pid;
+  print "\n";
+  exit 1;
+}
+else {
+  $got_lock = 1;
+  open(PIDFILE, '>', $pidfile) or die $!;
+  print PIDFILE "${$}\n";
+  close PIDFILE;
 }
 
      # create the tmp dir where we'll edit the clear text version of
@@ -83,7 +95,7 @@ sub cleanup {
     remove_tree($tmpdir)
       or warn "$pgm: $tmpdir: could not remove directory: $!\n";
   }
-  if (defined $lock_directory and -d $lock_directory) {
+  if ($got_lock != 0 and defined $lock_directory and -d $lock_directory) {
     remove_tree($lock_directory)
   }
   return 1;
