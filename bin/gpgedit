@@ -95,7 +95,7 @@ sub cleanup {
     remove_tree($tmpdir)
       or warn "$pgm: $tmpdir: could not remove directory: $!\n";
   }
-  if ($got_lock != 0 and defined $lock_directory and -d $lock_directory) {
+  if (defined $got_lock and $got_lock != 0 and defined $lock_directory and -d $lock_directory) {
     remove_tree($lock_directory)
   }
   return 1;
