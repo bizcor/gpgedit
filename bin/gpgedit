@@ -231,6 +231,7 @@ sub tmpfile {
        # use of fsdev and inode numbers avoids collisions when
        # simultaneously editing different files with the same basename.
   my $tmpdir = "$ENV{ HOME }/.gpge.fsdev${fsdev}.inode${inode}";
+  defined $ENV{GPGEDIT_TMPDIR} and -d $ENV{GPGEDIT_TMPDIR} and $tmpdir = "$ENV{GPGEDIT_TMPDIR}/.gpge.fsdev${fsdev}.inode${inode}";
 
        # bail if tmp directory exists
   if (not mkdir $tmpdir, 0700) {
