@@ -24,6 +24,8 @@ $ENV{ PATH } = "/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin";
 
 my $pgm = basename $0;
 
+my $NUMBER_OF_LINES_TO_UNCLUTTER_SCREEN = 80;
+
 my $usage = << "EndOfUsage";
 usage: $pgm File
 EndOfUsage
@@ -175,6 +177,9 @@ sub prompt_for_file_commit {
   not defined(my $gpg_recipient = shift)
     and die "$func(): \$gpg_recipient undefined\n";
 
+  if (defined $ENV{GPGEDIT_UNCLUTTER_SCREEN}) {
+    print "\n" x $NUMBER_OF_LINES_TO_UNCLUTTER_SCREEN;
+  }
   print "Commit ${encrypted_file}? [no:]  ";
   (my $response = <STDIN>) =~ s/\s//g;
 
