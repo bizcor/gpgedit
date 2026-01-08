@@ -180,10 +180,47 @@ sub prompt_for_file_commit {
   if (defined $ENV{GPGEDIT_UNCLUTTER_SCREEN}) {
     print "\n" x $NUMBER_OF_LINES_TO_UNCLUTTER_SCREEN;
   }
-  print "Commit ${encrypted_file}? [no:]  ";
+
+  ### default_choice = true [yes]
+
+  ### if env_default_choice set
+    ### default_choice = env_default_choice
+  ### end
+
+  ### default_text = default_choice ? 'yes' ? 'no'
+
+  ### prompt using default_text
+  ### response = read
+  ### if response null
+    ### response = default_choice
+  ### else
+    ### response derived from user input
+  ### end
+
+  # by default, don't commit...
+  my $default_commit_choice = 0;
+
+  # ...but let the user's environment have the final say over the
+  # default behavoir
+  if (defined $ENV{GPGEDIT_DEFAULT_COMMIT_CHOICE}) {
+    $default_commit_choice = $ENV{GPGEDIT_DEFAULT_COMMIT_CHOICE};
+  }
+
+  my $commit_choice_text = $default_commit_choice ? 'yes' : 'no';
+
+  my $commit;
+
+  print "Commit ${encrypted_file}? [${commit_choice_text}:] ";
   (my $response = <STDIN>) =~ s/\s//g;
 
-  if ($response =~ /^y(es)?$/i) {
+  if (defined $response and $response !~ /\S/) {
+    $commit = $default_commit_choice;
+  }
+  elsif ($response =~ /^y(es)?$/i) {
+    $commit = 1;
+  }
+
+  if ($commit) {
     my $cmd = qq{gpg --encrypt --recipient '$gpg_recipient'};
     $cmd = qq{$cmd < "$cleartext_file" > "$encrypted_file"};
     system $cmd;
