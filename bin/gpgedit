@@ -210,7 +210,7 @@ sub prompt_for_file_commit {
 
   my $commit;
 
-  print "Commit ${encrypted_file}? [${commit_choice_text}:] ";
+  print "\n" x 100, "Commit ${encrypted_file}? [${commit_choice_text}:] ";
   (my $response = <STDIN>) =~ s/\s//g;
 
   if (defined $response and $response !~ /\S/) {
